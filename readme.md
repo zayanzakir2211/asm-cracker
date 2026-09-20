@@ -101,8 +101,8 @@ The brute-force search space is partitioned between workers so that different wo
 ## 1. Clone the repository
 
 ```bash
-git clone <YOUR-REPOSITORY-URL>
-cd <YOUR-REPOSITORY-DIRECTORY>
+git clone https://github.com/zayanzakir2211/asm-cracker.git
+cd asm-cracker
 ```
 
 ## 2. Install Node.js
