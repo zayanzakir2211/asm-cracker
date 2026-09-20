@@ -44,40 +44,6 @@ The peak number is a benchmark measurement and should not be interpreted as a gu
 
 ---
 
-## Intel Pentium Silver N5030
-
-**Peak: 4,421,489 candidates/sec**
-
-A sustained end-to-end run on the N5030 produced:
-
-```text
-Candidates checked: 227,102,085
-Sustained speed:    3,975,598 candidates/sec
-Peak speed:         4,349,469 candidates/sec
-Elapsed time:       00:57
-Workers:            4
-```
-
-Example successful run:
-
-```text
-TRIED       11,425,501 candidates
-SPEED        4,108,415 candidates/sec
-PEAK SPEED   4,146,447 candidates/sec
-ELAPSED      00:02
-
-WORKER 0     938,650 / sec
-WORKER 1     943,810 / sec
-WORKER 2     881,487 / sec
-WORKER 3     996,103 / sec
-
-FOUND zayan
-```
-
-These results demonstrate that the engine can utilize multiple CPU workers even on a low-power Pentium processor.
-
----
-
 # How It Works
 
 The performance-critical portion of the application is written in x86-64 Assembly.
