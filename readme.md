@@ -31,7 +31,7 @@ The project was created as an experiment in low-level performance engineering: h
 The engine has been tested on multiple CPUs.
 
 ## AMD Ryzen 5 7500F
-
+(tested by myself)
 **Peak: 29,533,892 candidates/sec**
 
 Approximately:
@@ -145,15 +145,13 @@ For meaningful performance comparisons:
 ### Recommended benchmark information
 
 ```text
-CPU:
-Architecture:
-Logical processors:
-OS:
-Worker count:
-Candidate configuration:
-Average speed:
-Peak speed:
-Elapsed time:
+CPU: Intel core i5 12th gen
+Architecture: x86-64
+Logical processors: 12
+OS: windows 10
+Worker count: 12
+Average speed: 25M candidates/sec
+Peak speed: 30M candidates/sec
 ```
 
 Peak throughput is useful for observing the maximum performance reached by the engine, while sustained throughput is more representative of long-running workloads.
@@ -246,9 +244,7 @@ Therefore, benchmark numbers from different systems should not be treated as dir
 
 # License
 
-See [`LICENSE`](LICENSE) for the license applicable to this project.
-
-If no license file is included, all rights are reserved by the copyright holder.
+ All rights are reserved by the copyright holder.
 
 ---
 
@@ -257,5 +253,3 @@ If no license file is included, all rights are reserved by the copyright holder.
 Built as a personal low-level performance engineering project.
 
 **Assembly + SHA-256 + multithreading + a lot of optimization.**
-
-> *Started with a question about machine language. Ended with millions of SHA-256 candidates per second.*
