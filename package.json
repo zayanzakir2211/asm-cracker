@@ -1,0 +1,11 @@
+{
+  "name": "asm-sha256-cracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local GUI for the Windows x64 assembly SHA-256 wordlist and brute-force checker",
+  "main": "server.js",
+  "scripts": {
+    "build": "powershell -ExecutionPolicy Bypass -File build.ps1",
+    "start": "node server.js"
+  }
+}
