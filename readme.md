@@ -67,37 +67,37 @@ The performance-critical portion of the application is written in x86-64 Assembl
            │
            ▼
    ┌───────┴────────┐
-   │ Runtime choice  │
+   │ Runtime choice │
    └───────┬────────┘
            │
    ┌───────┴────────────────────────────┐
    ▼                                    ▼
 ┌─────────────────────┐      ┌───────────────────────┐
-│ Native ASM Engine   │      │ Native GPU Engine      │
-│ (checker.exe)       │      │ (checker_gpu.exe)      │
-└──────────┬──────────┘      └──────────┬─────────────┘
+│ Native ASM Engine   │      │ Native GPU Engine     │
+│ (checker.exe)       │      │ (checker_gpu.exe)     │
+└──────────┬──────────┘      └──────────┬────────────┘
            │                            │
            ▼                            ▼
 ┌─────────────────────┐      ┌───────────────────────┐
-│ Worker Threads       │      │ OpenCL device + queue │
-│                      │      │ (auto-detected)        │
-│ Worker 0              │      └──────────┬─────────────┘
-│ Worker 1              │                 │
-│ Worker 2              │                 ▼
-│ Worker ...            │      ┌───────────────────────┐
-└──────────┬──────────┘      │ Batched NDRange kernel │
-           │                  │ dispatch (16M/batch)   │
-           ▼                  └──────────┬─────────────┘
+│ Worker Threads      │      │ OpenCL device + queue │
+│                     │      │ (auto-detected)       │
+│ Worker 0            │      └──────────┬────────────┘
+│ Worker 1            │                 │
+│ Worker 2            │                 ▼
+│ Worker ...          │      ┌───────────────────────┐
+└──────────┬──────────┘      │ Batched NDRange kerne │
+           │                 │ dispatch (16M/batch)  │
+           ▼                 └──────────┬────────────┘
 ┌─────────────────────┐                 │
-│ SHA-256 Compression  │                 ▼
+│ SHA-256 Compression │                 ▼
 └──────────┬──────────┘      ┌───────────────────────┐
-           │                  │ SHA-256 Compression    │
-           ▼                  │ (per work-item)        │
-┌─────────────────────┐      └──────────┬─────────────┘
-│ 32-byte comparison   │                 │
+           │                 │ SHA-256 Compression   │
+           ▼                 │ (per work-item)       │
+┌─────────────────────┐      └──────────┬────────────┘
+│ 32-byte comparison  │                 │
 └─────────────────────┘                 ▼
                               ┌───────────────────────┐
-                              │ 32-byte comparison      │
+                              │ 32-byte comparison    │
                               └───────────────────────┘
 ```
 
