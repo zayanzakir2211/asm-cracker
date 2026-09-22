@@ -244,7 +244,7 @@ Therefore, benchmark numbers from different systems should not be treated as dir
 
 # License
 
- All rights are reserved by the copyright holder.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
 
