@@ -4,7 +4,7 @@ A high-performance **SHA-256 brute-force and wordlist research tool**, built aro
 
 The project was created as an experiment in low-level performance engineering: how far can a manually optimized assembly implementation — and, alongside it, a GPU kernel — push SHA-256 candidate generation and verification on ordinary consumer hardware?
 
-> **Current peak benchmark:** 29,533,892 candidates/sec on an AMD Ryzen 5 7500F (CPU/ASM engine).
+> **Current peak benchmark:** 29,533,892 candidates/sec on an AMD Ryzen 5 7500F (CPU/ASM engine) · 212,573,452 candidates/sec on an Intel Arc A380 (GPU/OpenCL engine).
 
 ---
 
@@ -50,9 +50,27 @@ The peak number is a benchmark measurement and should not be interpreted as a gu
 
 GPU throughput depends heavily on the device (discrete vs. integrated GPU, compute unit count, clock speed, driver, and workload), so there is no single reference number the way there is for the ASM benchmark above. Use the built-in **GPU device scan** (see below) to see your own hardware's specs, and the GUI's live **TRIED / SPEED / PEAK SPEED** telemetry to measure your own throughput during a run.
 
-As a rough point of reference, even a modest integrated GPU (an 18-compute-unit Intel iGPU) has been observed sustaining low double-digit millions of candidates/sec in testing — competitive with or exceeding a multi-core CPU run on the same machine, without dedicating the CPU to the search.
+### Intel Arc A380 — GPU / OpenCL engine
+(tested by myself)
+**Peak: 212,573,452 candidates/sec**
 
-Note: unlike the CPU engine, the GPU engine reports progress once per kernel-dispatch batch (16,777,216 candidates per batch) rather than continuously, so on small search spaces you may see very few `PROGRESS` updates — or the run may complete inside a single batch — before jumping straight to a result.
+* Device: Intel(R) Arc(TM) A380 Graphics — 128 compute units
+* Workload: digits `0-9`, brute-force, length 1–12
+* Observed sustained speed: **~211.9 million candidates/sec**
+* Peak speed: **212.6 million candidates/sec**
+* Elapsed: 01:01 (run stopped manually after 13,023,713,734 candidates tried)
+
+Approximately:
+
+* **211.9 million candidates/sec sustained**
+* **12.7 billion candidates/minute**
+* **763 billion candidates/hour** at the measured sustained rate
+
+As a lower-end reference point, a modest 18-compute-unit Intel integrated GPU has also been observed sustaining low double-digit millions of candidates/sec — still competitive with or exceeding a multi-core CPU run on the same machine, without dedicating the CPU to the search. The gap between that and the A380 result above (roughly 19x) tracks with the jump from an iGPU sharing system memory bandwidth to a discrete card with dedicated VRAM and far more compute units.
+
+As with the CPU benchmark, these are measurements from specific hardware and should not be treated as guaranteed throughput on other devices.
+
+Note: unlike the CPU engine, the GPU engine reports progress once per kernel-dispatch batch (16,777,216 candidates per batch) rather than continuously, so on small search spaces you may see very few `PROGRESS` updates — or the run may complete inside a single batch — before jumping straight to a result. On fast devices like the A380 above, batches complete in well under 100ms each, so telemetry still reads as smooth in practice.
 
 ---
 
@@ -67,37 +85,37 @@ The performance-critical portion of the application is written in x86-64 Assembl
            │
            ▼
    ┌───────┴────────┐
-   │ Runtime choice │
+   │ Runtime choice  │
    └───────┬────────┘
            │
    ┌───────┴────────────────────────────┐
    ▼                                    ▼
 ┌─────────────────────┐      ┌───────────────────────┐
-│ Native ASM Engine   │      │ Native GPU Engine     │
-│ (checker.exe)       │      │ (checker_gpu.exe)     │
-└──────────┬──────────┘      └──────────┬────────────┘
+│ Native ASM Engine   │      │ Native GPU Engine      │
+│ (checker.exe)       │      │ (checker_gpu.exe)      │
+└──────────┬──────────┘      └──────────┬─────────────┘
            │                            │
            ▼                            ▼
 ┌─────────────────────┐      ┌───────────────────────┐
-│ Worker Threads      │      │ OpenCL device + queue │
-│                     │      │ (auto-detected)       │
-│ Worker 0            │      └──────────┬────────────┘
-│ Worker 1            │                 │
-│ Worker 2            │                 ▼
-│ Worker ...          │      ┌───────────────────────┐
-└──────────┬──────────┘      │ Batched NDRange kerne │
-           │                 │ dispatch (16M/batch)  │
-           ▼                 └──────────┬────────────┘
+│ Worker Threads       │      │ OpenCL device + queue │
+│                      │      │ (auto-detected)        │
+│ Worker 0              │      └──────────┬─────────────┘
+│ Worker 1              │                 │
+│ Worker 2              │                 ▼
+│ Worker ...            │      ┌───────────────────────┐
+└──────────┬──────────┘      │ Batched NDRange kernel │
+           │                  │ dispatch (16M/batch)   │
+           ▼                  └──────────┬─────────────┘
 ┌─────────────────────┐                 │
-│ SHA-256 Compression │                 ▼
+│ SHA-256 Compression  │                 ▼
 └──────────┬──────────┘      ┌───────────────────────┐
-           │                 │ SHA-256 Compression   │
-           ▼                 │ (per work-item)       │
-┌─────────────────────┐      └──────────┬────────────┘
-│ 32-byte comparison  │                 │
+           │                  │ SHA-256 Compression    │
+           ▼                  │ (per work-item)        │
+┌─────────────────────┐      └──────────┬─────────────┘
+│ 32-byte comparison   │                 │
 └─────────────────────┘                 ▼
                               ┌───────────────────────┐
-                              │ 32-byte comparison    │
+                              │ 32-byte comparison      │
                               └───────────────────────┘
 ```
 
