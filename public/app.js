@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let mode = 'wordlist';
+let runtime = 'cpu';
+let gpuDevices = [];
+let gpuLoaded = false;
 let activeJob = null;
 let eventSource = null;
 let startedAt = 0;
@@ -20,14 +23,56 @@ function formatTime(ms) { const seconds = Math.floor(ms / 1000); return `${Strin
 function updateProgress(count, elapsedMs) { lastCount = count; $('tried').textContent = count.toLocaleString(); $('elapsed').textContent = formatTime(elapsedMs); const speed = elapsedMs ? Math.round(count / (elapsedMs / 1000)) : 0; peakSpeed = Math.max(peakSpeed, speed); $('speed').textContent = speed.toLocaleString(); $('peakSpeed').textContent = peakSpeed.toLocaleString(); $('progressLabel').textContent = `${count.toLocaleString()} candidates checked`; $('progressBar').style.width = `${Math.min(100, Math.max(2, Math.log10(count + 1) * 9))}%`; }
 function renderWorkers() { const list = $('workerList'); if (!workers.size) { list.innerHTML = '<span class="worker-empty">Workers will appear when the engine starts.</span>'; return; } const values = [...workers.values()]; const average = values.reduce((sum, worker) => sum + worker.speed, 0) / values.length; $('workerAverage').textContent = `AVG ${Math.round(average).toLocaleString()} / SEC`; list.innerHTML = values.sort((a, b) => a.id - b.id).map((worker) => `<div class="worker-row"><span>WORKER ${worker.id}</span><span class="worker-bar"><i style="width:${Math.min(100, Math.max(3, worker.speed / Math.max(1, average) * 50))}%"></i></span><span class="worker-speed">${worker.speed.toLocaleString()} / SEC</span></div>`).join(''); }
 function finishUI(result) { if (Number.isFinite(result.count)) updateProgress(result.count, Date.now() - startedAt); $('startButton').classList.remove('hidden'); $('stopButton').classList.add('hidden'); $('engineStatus').textContent = 'ENGINE READY'; $('streamState').textContent = 'IDLE'; $('runMode').textContent = 'STANDBY'; const box = $('resultBox'); box.className = `result-box ${result.status === 'found' ? 'found' : result.status === 'error' ? 'error' : 'idle'}`; $('resultTitle').textContent = result.status === 'found' ? 'Match found' : result.status === 'error' ? 'Run failed' : 'Search exhausted'; $('resultDetail').textContent = result.status === 'found' ? `Plaintext: ${result.candidate}` : result.status === 'error' ? result.message : `${(result.count ?? lastCount).toLocaleString()} candidates checked with no match.`; if (eventSource) eventSource.close(); activeJob = null; }
-function setMode(next) { mode = next; document.querySelectorAll('.mode-tab').forEach((button) => button.classList.toggle('active', button.dataset.mode === mode)); $('wordlistFields').classList.toggle('hidden', mode !== 'wordlist'); $('bruteFields').classList.toggle('hidden', mode !== 'brute'); $('startLabel').textContent = mode === 'wordlist' ? 'START WORDLIST RUN' : 'START BRUTE FORCE'; }
+function setMode(next) { if (runtime === 'gpu' && next === 'wordlist') return; mode = next; document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === mode)); $('wordlistFields').classList.toggle('hidden', mode !== 'wordlist'); $('bruteFields').classList.toggle('hidden', mode !== 'brute'); $('startLabel').textContent = mode === 'wordlist' ? 'START WORDLIST RUN' : `START BRUTE FORCE${runtime === 'gpu' ? ' (GPU)' : ''}`; }
+function renderGpuDevices() {
+  const select = $('gpuDevice');
+  if (!gpuDevices.length) { select.innerHTML = '<option value="">No GPU devices found</option>'; return; }
+  select.innerHTML = gpuDevices.map((device) => `<option value="${device.index}">[${device.type}] ${device.name} · ${device.computeUnits} CU · ${device.clockMHz}MHz · ${device.memoryMB}MB</option>`).join('');
+}
+async function loadGpuDevices() {
+  $('gpuDevice').innerHTML = '<option value="">Detecting devices…</option>';
+  $('gpuNote').textContent = '';
+  try {
+    const response = await fetch('/api/devices');
+    const data = await response.json();
+    gpuDevices = data.devices || [];
+    gpuLoaded = true;
+    renderGpuDevices();
+    if (data.error && !gpuDevices.length) $('gpuNote').textContent = data.error;
+  } catch (error) {
+    gpuDevices = [];
+    gpuLoaded = true;
+    renderGpuDevices();
+    $('gpuNote').textContent = 'Could not reach the GPU detection endpoint.';
+  }
+}
+function setRuntime(next) {
+  runtime = next;
+  document.querySelectorAll('[data-runtime]').forEach((button) => button.classList.toggle('active', button.dataset.runtime === runtime));
+  $('gpuFields').classList.toggle('hidden', runtime !== 'gpu');
+  document.querySelector('.mode-tab[data-mode="wordlist"]').classList.toggle('disabled', runtime === 'gpu');
+  if (runtime === 'gpu') {
+    if (mode === 'wordlist') setMode('brute'); else setMode(mode);
+    if (!gpuLoaded) loadGpuDevices();
+  } else {
+    setMode(mode);
+  }
+}
 async function startRun(event) {
   event.preventDefault(); $('formError').textContent = '';
   const hash = $('hash').value.trim(); if (!/^[a-fA-F0-9]{64}$/.test(hash)) { $('formError').textContent = 'Enter exactly 64 hexadecimal characters.'; return; }
-  const body = { mode, hash };
+  const body = { mode, hash, runtime };
   if (mode === 'wordlist') { const file = $('wordlist').files[0]; if (!file) { $('formError').textContent = 'Choose a wordlist file first.'; return; } body.wordlistName = file.name; body.wordlistContent = btoa(String.fromCharCode(...new Uint8Array(await file.arrayBuffer()))); }
-  else { const preset = $('charsetPreset').value; body.charset = preset === 'custom' ? $('customCharset').value : charsetValues[preset]; body.minLength = Number($('minLength').value); body.maxLength = Number($('maxLength').value); if (!body.charset || body.minLength < 1 || body.maxLength < body.minLength || body.maxLength > 12) { $('formError').textContent = 'Choose a character set and valid length range.'; return; } }
-    peakSpeed = 0; $('peakSpeed').textContent = '0'; $('startButton').classList.add('hidden'); $('stopButton').classList.remove('hidden'); $('engineStatus').textContent = 'ENGINE RUNNING'; $('streamState').textContent = 'LIVE'; $('runMode').textContent = mode === 'wordlist' ? 'WORDLIST' : 'BRUTE FORCE'; $('resultBox').className = 'result-box idle'; $('resultTitle').textContent = 'Searching'; $('resultDetail').textContent = 'Waiting for the next assembly checkpoint...'; $('tried').textContent = '0'; $('speed').textContent = '0'; $('elapsed').textContent = '00:00'; $('progressBar').style.width = '0%'; $('log').innerHTML = ''; workers.clear(); renderWorkers(); log(`launching ${mode} engine`, true); startedAt = Date.now();
+  else {
+    const preset = $('charsetPreset').value; body.charset = preset === 'custom' ? $('customCharset').value : charsetValues[preset]; body.minLength = Number($('minLength').value); body.maxLength = Number($('maxLength').value);
+    if (!body.charset || body.minLength < 1 || body.maxLength < body.minLength || body.maxLength > 12) { $('formError').textContent = 'Choose a character set and valid length range.'; return; }
+    if (runtime === 'gpu') {
+      const deviceValue = $('gpuDevice').value;
+      if (deviceValue === '') { $('formError').textContent = 'Choose a GPU device (rescan if none are listed).'; return; }
+      body.device = Number(deviceValue);
+    }
+  }
+    peakSpeed = 0; $('peakSpeed').textContent = '0'; $('startButton').classList.add('hidden'); $('stopButton').classList.remove('hidden'); $('engineStatus').textContent = 'ENGINE RUNNING'; $('streamState').textContent = 'LIVE'; $('runMode').textContent = (mode === 'wordlist' ? 'WORDLIST' : 'BRUTE FORCE') + (runtime === 'gpu' ? ' / GPU' : ' / CPU'); $('resultBox').className = 'result-box idle'; $('resultTitle').textContent = 'Searching'; $('resultDetail').textContent = 'Waiting for the next assembly checkpoint...'; $('tried').textContent = '0'; $('speed').textContent = '0'; $('elapsed').textContent = '00:00'; $('progressBar').style.width = '0%'; $('log').innerHTML = ''; workers.clear(); renderWorkers(); log(`launching ${mode} engine`, true); startedAt = Date.now();
   try { const response = await fetch('/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); activeJob = data.id; eventSource = new EventSource(`/api/events/${activeJob}`); eventSource.addEventListener('progress', (message) => { const progress = JSON.parse(message.data); updateProgress(progress.count, progress.elapsedMs); }); eventSource.addEventListener('worker', (message) => { const worker = JSON.parse(message.data); workers.set(worker.id, worker); renderWorkers(); }); eventSource.addEventListener('result', (message) => { const result = JSON.parse(message.data); finishUI(result); log(result.status === 'found' ? `FOUND ${result.candidate}` : result.status.toUpperCase(), true); }); } catch (error) { finishUI({ status: 'error', message: error.message }); $('formError').textContent = error.message; }
 }
-$('crackForm').addEventListener('submit', startRun); document.querySelectorAll('.mode-tab').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode))); $('charsetPreset').addEventListener('change', () => $('customCharset').classList.toggle('hidden', $('charsetPreset').value !== 'custom')); $('wordlist').addEventListener('change', () => { const file = $('wordlist').files[0]; $('fileName').textContent = file ? file.name : 'Choose a wordlist'; }); $('stopButton').addEventListener('click', async () => { if (activeJob) await fetch(`/api/stop/${activeJob}`, { method: 'POST' }); finishUI({ status: 'error', message: 'Run stopped by user.' }); log('run stopped by user', true); });
+$('crackForm').addEventListener('submit', startRun); document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode))); document.querySelectorAll('[data-runtime]').forEach((button) => button.addEventListener('click', () => setRuntime(button.dataset.runtime))); $('rescanGpu').addEventListener('click', () => loadGpuDevices()); $('charsetPreset').addEventListener('change', () => $('customCharset').classList.toggle('hidden', $('charsetPreset').value !== 'custom')); $('wordlist').addEventListener('change', () => { const file = $('wordlist').files[0]; $('fileName').textContent = file ? file.name : 'Choose a wordlist'; }); $('stopButton').addEventListener('click', async () => { if (activeJob) await fetch(`/api/stop/${activeJob}`, { method: 'POST' }); finishUI({ status: 'error', message: 'Run stopped by user.' }); log('run stopped by user', true); });

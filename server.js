@@ -8,6 +8,7 @@ const { spawn, execFile } = require('child_process');
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 4173);
 const executable = path.join(ROOT, 'checker.exe');
+const gpuExecutable = path.join(ROOT, 'checker_gpu.exe');
 const jobs = new Map();
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -44,6 +45,37 @@ function validCharset(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 64 && !/[\x00\r\n]/.test(value);
 }
 
+function validRuntime(value) {
+  return value === 'cpu' || value === 'gpu';
+}
+
+function listGpuDevices() {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(gpuExecutable)) return resolve({ error: 'checker_gpu.exe is missing. Run npm run build first.', devices: [] });
+    const child = spawn(gpuExecutable, ['list'], { cwd: ROOT, windowsHide: true });
+    let output = '';
+    let errorOutput = '';
+    const devices = [];
+    child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { errorOutput += chunk.toString('utf8'); });
+    child.on('error', (error) => resolve({ error: error.message, devices: [] }));
+    child.on('close', () => {
+      let sawError = null;
+      output.split(/\r?\n/).filter(Boolean).forEach((line) => {
+        let match = line.match(/^DEVICE\s+(\d+)\s+(\S+)\s+(.*?)\s+CU:(\d+)\s+CLOCK:(\d+)\s+MEM:(\d+)/);
+        if (match) {
+          devices.push({ index: Number(match[1]), type: match[2], name: match[3], computeUnits: Number(match[4]), clockMHz: Number(match[5]), memoryMB: Number(match[6]) });
+          return;
+        }
+        match = line.match(/^ERROR\s*(.*)$/);
+        if (match) sawError = match[1] || 'GPU device detection failed.';
+      });
+      if (!devices.length && !sawError) sawError = errorOutput.trim() || 'No OpenCL devices found.';
+      resolve({ error: devices.length ? null : sawError, devices });
+    });
+  });
+}
+
 function finish(job, result) {
   if (job.finished) return;
   job.finished = true;
@@ -55,12 +87,16 @@ function finish(job, result) {
 
 function startJob(options) {
   const id = crypto.randomUUID();
+  const runtime = options.runtime === 'gpu' ? 'gpu' : 'cpu';
+  const chosenExecutable = runtime === 'gpu' ? gpuExecutable : executable;
   const args = options.mode === 'wordlist'
     ? ['wordlist', options.hash, options.tempWordlist]
-    : ['brute', options.hash, options.charset, String(options.minLength), String(options.maxLength)];
+    : runtime === 'gpu'
+      ? ['brute', options.hash, options.charset, String(options.minLength), String(options.maxLength), String(options.device)]
+      : ['brute', options.hash, options.charset, String(options.minLength), String(options.maxLength)];
   const job = { id, clients: new Set(), events: [], workers: new Map(), count: 0, lastProgressSent: 0, startedAt: Date.now(), finished: false, tempWordlist: options.tempWordlist };
   jobs.set(id, job);
-  const child = spawn(executable, args, { cwd: ROOT, windowsHide: true });
+  const child = spawn(chosenExecutable, args, { cwd: ROOT, windowsHide: true });
   job.child = child;
   let output = '';
   const consume = (chunk) => {
@@ -126,16 +162,25 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/start') {
       const body = await readBody(req);
       if (!validHash(body.hash)) return json(res, 400, { error: 'Enter a 64-character SHA-256 hash.' });
+      const runtime = validRuntime(body.runtime) ? body.runtime : 'cpu';
+      body.runtime = runtime;
+      if (runtime === 'gpu' && body.mode === 'wordlist') return json(res, 400, { error: 'The GPU engine only supports brute-force mode.' });
       if (body.mode === 'wordlist') {
         if (typeof body.wordlistName !== 'string' || typeof body.wordlistContent !== 'string' || body.wordlistContent.length > 8 * 1024 * 1024) return json(res, 400, { error: 'Choose a wordlist smaller than 6 MiB.' });
         const tempWordlist = path.join(os.tmpdir(), `hashforge-${crypto.randomUUID()}.txt`);
         fs.writeFileSync(tempWordlist, Buffer.from(body.wordlistContent, 'base64'));
         body.tempWordlist = tempWordlist;
       } else if (body.mode === 'brute' && validCharset(body.charset) && Number.isInteger(body.minLength) && Number.isInteger(body.maxLength) && body.minLength > 0 && body.maxLength >= body.minLength && body.maxLength <= 12) {
-        // Validated below by the common launch path.
+        if (runtime === 'gpu' && !(Number.isInteger(body.device) && body.device >= 0)) return json(res, 400, { error: 'Choose a GPU device.' });
       } else return json(res, 400, { error: 'Choose a valid cracking mode and range.' });
-      if (!fs.existsSync(executable)) return json(res, 500, { error: 'checker.exe is missing. Run npm run build first.' });
+      const chosenExecutable = runtime === 'gpu' ? gpuExecutable : executable;
+      const missingName = runtime === 'gpu' ? 'checker_gpu.exe' : 'checker.exe';
+      if (!fs.existsSync(chosenExecutable)) return json(res, 500, { error: `${missingName} is missing. Run npm run build first.` });
       return json(res, 200, { id: startJob(body) });
+    }
+    if (req.method === 'GET' && req.url === '/api/devices') {
+      const result = await listGpuDevices();
+      return json(res, 200, result);
     }
     if (req.method === 'GET' && req.url.startsWith('/api/events/')) {
       const id = req.url.slice('/api/events/'.length);

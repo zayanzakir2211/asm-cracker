@@ -23,6 +23,13 @@
         <div class="panel-head"><div><span class="section-index">01</span><h2>Target & method</h2></div><span class="mono muted">INPUT</span></div>
         <label class="field-label" for="hash">SHA-256 HASH</label>
         <input id="hash" name="hash" class="hash-input" maxlength="64" spellcheck="false" placeholder="64-character hexadecimal digest" required>
+        <label class="field-label" style="margin-top:22px">RUNTIME</label>
+        <div class="mode-tabs runtime-tabs" role="tablist"><button type="button" class="mode-tab active" data-runtime="cpu">CPU · ASM</button><button type="button" class="mode-tab" data-runtime="gpu">GPU · OPENCL</button></div>
+        <div id="gpuFields" class="mode-fields hidden">
+          <label class="field-label" for="gpuDevice">GPU DEVICE</label>
+          <div class="device-row"><select id="gpuDevice"><option value="">Detecting devices…</option></select><button id="rescanGpu" type="button" class="rescan-button" title="Rescan devices">⟳</button></div>
+          <p id="gpuNote" class="form-error"></p>
+        </div>
         <div class="mode-tabs" role="tablist"><button type="button" class="mode-tab active" data-mode="wordlist">WORDLIST</button><button type="button" class="mode-tab" data-mode="brute">BRUTE FORCE</button></div>
         <div id="wordlistFields" class="mode-fields">
           <label class="file-drop" for="wordlist"><span class="file-icon">+</span><span><strong id="fileName">Choose a wordlist</strong><small>TXT / one candidate per line</small></span><input id="wordlist" type="file" accept=".txt,text/plain"></label>
